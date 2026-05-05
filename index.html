@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>2025 增上佛七報到系統</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/0.100.2/css/materialize.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/0.100.2/js/materialize.min.js"></script>
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+  <style>
+    :root {
+      --primary-color: #1a237e;
+      --secondary-color: #2e7d32;
+      --accent-color: #ff8f00;
+      --bg-color: #f0f2f5;
+    }
+    body { background: var(--bg-color); font-family: "Microsoft JhengHei", sans-serif; -webkit-tap-highlight-color: transparent; }
+    
+    .app-header {
+      background: linear-gradient(135deg, #1a237e 0%, #3949ab 100%);
+      color: white; padding: 20px 0; margin-bottom: 20px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.2); border-radius: 0 0 20px 20px;
+    }
+    
+    .main-container { max-width: 500px; margin: auto; padding: 0 15px; padding-bottom: 50px; }
+    .card { border-radius: 16px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05) !important; margin-bottom: 20px; }
+    
+    #reader { width: 100%; border-radius: 12px; overflow: hidden; background: #000; margin-bottom: 20px; }
+    
+    .search-box { padding: 20px; background: white; border-radius: 16px; margin-bottom: 20px; position: relative; }
+    .input-field input:focus { border-bottom: 2px solid var(--primary-color) !important; box-shadow: none !important; }
+    
+    .info-tile { background: #f8f9fa; border-radius: 12px; padding: 12px 5px; text-align: center; }
+    .info-label { font-size: 0.8rem; color: #757575; margin-bottom: 4px; display: block; }
+    .info-value { font-size: 1.6rem; font-weight: 800; color: #2c3e50; }
+    .info-value.seat { color: var(--secondary-color); }
+    
+    .btn-gradient {
+      background: linear-gradient(90deg, #1e88e5 0%, #1565c0 100%);
+      border-radius: 12px; height: 50px; line-height: 50px; text-transform: none; font-weight: bold; width: 100%; display: block; margin-bottom: 15px; color: white; border: none; cursor: pointer;
+    }
+    .btn-checkin {
+      background: linear-gradient(90deg, #43a047 0%, #2e7d32 100%);
+      border-radius: 12px; height: 54px; width: 100%; font-size: 1.2rem; font-weight: bold; color: white; border: none; cursor: pointer;
+    }
+    
+    .badge-pill { background: #e3f2fd; color: #1976d2; padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; }
+    .fade-in { animation: fadeIn 0.4s ease-out forwards; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+    
+    #preload { text-align: center; padding: 20px; display: none; }
+  </style>
+</head>
+<body>
+
+  <div class="app-header center-align">
+    <h5 style="margin:0; font-weight: bold;">佛七報到系統</h5>
+    <p style="margin:5px 0 0 0; opacity: 0.8; font-size: 0.9rem;">2025 增上佛七 (男眾部)</p>
+  </div>
+
+  <div class="main-container">
+    
+    <button type="button" class="btn-gradient waves-effect waves-light" onclick="startScan();">
+      <i class="material-icons left">qr_code_scanner</i> 啟動相機掃描
+    </button>
+
+    <div id="reader" style="display:none;"></div>
+    
+    <div class="search-box z-depth-1">
+      <div class="row" style="margin-bottom: 0;">
+        <div class="input-field col s6">
+          <input type="text" id="myName" placeholder="輸入姓名">
+          <label class="active">姓名</label>
+        </div>
+        <div class="input-field col s6">
+          <input type="text" id="mySN" placeholder="或輸入序號">
+          <label class="active">序號</label>
+        </div>
+      </div>
+      <button type="button" class="btn-flat waves-effect waves-blue" onclick="submitQuery();" style="width:100%; color: #1565c0; font-weight: bold; border: 1px solid #e0e0e0; border-radius: 8px; margin-top: 10px;">
+        <i class="material-icons left">search</i> 搜尋學員資料
+      </button>
+    </div>
+
+    <div id="preload">
+      <div class="preloader-wrapper small active">
+        <div class="spinner-layer spinner-blue-only">
+          <div class="circle-clipper left"><div class="circle"></div></div><div class="gap-patch"><div class="circle"></div></div><div class="circle-clipper right"><div class="circle"></div></div>
+        </div>
+      </div>
+      <p class="grey-text">正在查詢中...</p>
+    </div>
+
+    <div id="output"></div>
+  </div>
+
+  <script>
+    const GAS_URL = "https://script.google.com/macros/s/AKfycby5zzTaQZNRv3vdg5o4Qx8Btgk9dy0EBYqoswcMY4gjyKf3U2SuTGmR0oFdENjIJeohLA/exec"; 
+
+    let qrScanner;
+    let isProcessing = false;
+
+    // 啟動掃描
+    function startScan() {
+      document.getElementById("reader").style.display = "block";
+      document.getElementById("output").innerHTML = "";
+      if (!qrScanner) {
+        qrScanner = new Html5Qrcode("reader", {
+          formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE, Html5QrcodeSupportedFormats.CODE_39, Html5QrcodeSupportedFormats.CODE_128 ]
+        });
+      }
+
+      const qrboxFunction = (viewfinderWidth, viewfinderHeight) => {
+          let minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+          let width = Math.floor(minEdge * 0.8); 
+          let height = Math.floor(width * 0.6);
+          return { width: width, height: height };
+      }
+
+      qrScanner.start({ facingMode: "environment" }, { 
+          fps: 25, qrbox: qrboxFunction, aspectRatio: 1.777778,
+          videoConstraints: { focusMode: "continuous", advanced: [{ focusMode: "continuous" }] }
+      }, msg => {
+          if (isProcessing) return;
+          isProcessing = true;
+          if (navigator.vibrate) navigator.vibrate(80);
+          qrScanner.stop().then(() => {
+            document.getElementById("reader").style.display = "none";
+            sendData("checkin", { qrValue: msg });
+          }).catch(() => { isProcessing = false; });
+      }).catch(err => {
+        alert("相機啟動失敗，請使用 HTTPS 環境並授予權限。");
+        isProcessing = false;
+      });
+    }
+
+    // 搜尋功能
+    function submitQuery() {
+      const myName = document.getElementById("myName").value.trim();
+      const mySN = document.getElementById("mySN").value.trim();
+      if (!myName && !mySN) {
+        alert("請輸入姓名或序號進行搜尋");
+        return;
+      }
+      sendData("query", { myName: myName, mySN: mySN });
+    }
+
+    // 發送資料
+    function sendData(action, params) {
+      if (isProcessing) return; 
+      isProcessing = true;
+      
+      // 禁用介面
+      $('#preload').fadeIn(200);
+      $('#output').empty();
+      
+      let queryStr = `action=${action}&t=${Date.now()}`;
+      for (let key in params) queryStr += `&${key}=${encodeURIComponent(params[key])}`;
+
+      fetch(`${GAS_URL}?${queryStr}`)
+        .then(res => res.json())
+        .then(res => {
+          $('#preload').hide();
+          isProcessing = false;
+          if (action === "checkin") renderCheckinResult(res);
+          else renderQueryResult(res);
+        })
+        .catch(err => {
+          $('#preload').hide();
+          isProcessing = false;
+          $('#output').html(`<div class='card-panel red white-text center fade-in'>連線異常，請確認 GAS 權限已開放給「所有人」。</div>`);
+        });
+    }
+
+    // 渲染查詢結果
+    function renderQueryResult(res) {
+      if (res.status === "error") {
+        $('#output').html(`<div class='card-panel white-text center fade-in' style='background:#f44336; border-radius:12px;'><b>${res.message}</b></div>`);
+        return;
+      }
+      
+      let html = "";
+      res.data.forEach((s) => {
+        const isAlreadyIn = (s.status === "已報到");
+        html += `
+        <div class="card fade-in">
+          <div class="card-content">
+            <div style="display:flex; justify-content:space-between; align-items: flex-start; margin-bottom: 15px;">
+              <div>
+                <span style="font-size: 1.5rem; font-weight: 800; color: #1a237e;">${s.name}</span>
+                <div class="grey-text" style="font-size: 0.85rem;">序號: ${s.sn}</div>
+              </div>
+              <span class="badge-pill">${s.school}</span>
+            </div>
+            
+            <div class="row" style="margin-bottom: 5px;">
+              <div class="col s6">
+                <div class="info-tile">
+                  <span class="info-label">房號</span>
+                  <span class="info-value">${s.floor}-${s.bed}</span>
+                </div>
+              </div>
+              <div class="col s6">
+                <div class="info-tile">
+                  <span class="info-label">座位</span>
+                  <span class="info-value seat">${s.seat || '-'}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="card-action center-align" style="background: #fafafa; border-top: none; padding: 20px;">
+            ${isAlreadyIn ? 
+              `<div class="orange-text fade-in" style="font-weight: 800; font-size: 1.2rem;">
+                <i class="material-icons" style="vertical-align: bottom;">check_circle</i> 已報到完成
+               </div>` : 
+              `<button type="button" class="btn-checkin waves-effect waves-light" onclick="sendData('checkin', {qrValue:'${s.sn}'})">
+                確認報到
+               </button>`
+            }
+          </div>
+        </div>`;
+      });
+      $('#output').html(html);
+      
+      // 平滑捲動至結果
+      window.scrollTo({ top: document.getElementById('output').offsetTop - 20, behavior: 'smooth' });
+    }
+
+    // 渲染報到結果
+    function renderCheckinResult(res) {
+      if (res.status === "error") {
+        $('#output').html(`<div class='card-panel red white-text center fade-in'>報到失敗：${res.message}</div>`);
+        return;
+      }
+      const d = res.details;
+      $('#output').html(`
+        <div class="card fade-in center-align" style="border: 2px solid #4caf50;">
+          <div class="card-content">
+            <i class="material-icons large green-text">verified</i>
+            <h4 class="green-text" style="font-weight:900; margin-top:0;">報到成功</h4>
+            <div class="divider"></div>
+            <div style="padding: 20px 0;">
+              <h5 style="margin: 0; font-weight: bold; font-size: 1.8rem;">${d.name}</h5>
+              <div class="row" style="margin-top:20px; margin-bottom: 0;">
+                <div class="col s6">
+                  <p class="grey-text">房號</p>
+                  <div style="font-size: 2.2rem; font-weight: 900; color:#1a237e;">${d.floor}-${d.bed}</div>
+                </div>
+                <div class="col s6">
+                  <p class="grey-text">座位</p>
+                  <div style="font-size: 2.2rem; font-weight: 900; color:#2e7d32;">${d.seat || '-'}</div>
+                </div>
+              </div>
+            </div>
+            <p class="grey-text small">時間: ${res.time}</p>
+          </div>
+        </div>`);
+    }
+
+    // 監聽 Enter 鍵防止重整
+    document.addEventListener('keypress', function(e) {
+      if (e.keyCode === 13) {
+        const activeId = document.activeElement.id;
+        if (activeId === 'myName' || activeId === 'mySN') {
+          e.preventDefault();
+          submitQuery();
+        }
+      }
+    });
+  </script>
+</body>
+</html>
